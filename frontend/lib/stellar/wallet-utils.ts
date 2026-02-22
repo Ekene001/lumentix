@@ -1,3 +1,4 @@
+import { isConnected } from '@stellar/freighter-api';
 import { NetworkType, WalletType } from '@/types/wallet';
 
 export const WALLET_STORAGE_KEY = 'lumentix_wallet';
@@ -40,26 +41,31 @@ export const getNetworkPassphrase = (network: NetworkType): string => {
     : 'Test SDF Network ; September 2015';
 };
 
-export const isFreighterInstalled = (): boolean => {
-  return typeof window !== 'undefined' && typeof window.freighter !== 'undefined';
+export const isFreighterInstalled = async (): Promise<boolean> => {
+  try {
+    const result = await isConnected();
+    return result === true;
+  } catch {
+    return false;
+  }
 };
 
-export const waitForFreighter = (timeout = 3000): Promise<boolean> => {
-  return new Promise((resolve) => {
-    if (isFreighterInstalled()) {
-      resolve(true);
-      return;
-    }
-
-    const startTime = Date.now();
-    const interval = setInterval(() => {
-      if (isFreighterInstalled()) {
-        clearInterval(interval);
-        resolve(true);
-      } else if (Date.now() - startTime > timeout) {
-        clearInterval(interval);
-        resolve(false);
+export const waitForFreighter = async (timeout = 3000): Promise<boolean> => {
+  const startTime = Date.now();
+  
+  while (Date.now() - startTime < timeout) {
+    try {
+      const available = await isFreighterInstalled();
+      if (available) {
+        return true;
       }
-    }, 100);
-  });
+    } catch {
+      // Continue waiting
+    }
+    
+    // Wait 100ms before checking again
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  
+  return false;
 };

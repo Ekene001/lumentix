@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { WalletContextType, WalletState, WalletType, NetworkType } from '@/types/wallet';
-import { connectFreighter, FreighterError } from '@/lib/stellar/freighter';
+import { connectFreighter, FreighterError, isFreighterAvailable } from '@/lib/stellar/freighter';
 import {
   saveWalletData,
   getStoredWalletData,
@@ -33,6 +33,14 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       try {
         if (stored.walletType === WalletType.FREIGHTER) {
+          // Check if Freighter is available
+          const available = await isFreighterAvailable();
+          if (!available) {
+            clearWalletData();
+            setState(initialState);
+            return;
+          }
+
           const publicKey = await connectFreighter(stored.network);
           
           if (publicKey === stored.publicKey) {
