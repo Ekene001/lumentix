@@ -1,17 +1,19 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Payment, PaymentStatus } from './entities/payment.entity';
-import { EventsService } from '../events/events.service';
-import { StellarService } from '../stellar/stellar.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import { EventStatus } from '../events/entities/event.entity';
+import { EventsService } from '../events/events.service';
+import { StellarService } from '../stellar/stellar.service';
+import { Payment, PaymentStatus } from './entities/payment.entity';
 
 /** Supported on-chain asset codes */
 const SUPPORTED_ASSETS = ['XLM', 'USDC'] as const;
@@ -80,7 +82,22 @@ export class PaymentsService {
       );
     }
 
-    // 4. Persist a pending payment record
+    // 4. Check for existing payment for this user and event
+    const existing = await this.paymentsRepository.findOne({
+      where: {
+        userId,
+        eventId,
+        status: In([PaymentStatus.PENDING, PaymentStatus.CONFIRMED]),
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException(
+        `You already have an active or confirmed payment for this event.`,
+      );
+    }
+
+    // 5. Persist a pending payment record
     const payment = this.paymentsRepository.create({
       eventId,
       userId,
@@ -114,7 +131,11 @@ export class PaymentsService {
   // STEP 2 — Confirm payment
   // ─────────────────────────────────────────────────────────────────────────
 
-  async confirmPayment(transactionHash: string): Promise<Payment> {
+  async confirmPayment(
+    transactionHash: string,
+    callerId: string,
+  ): Promise<Payment> {
+    // ← add callerId
     let txRecord: Awaited<ReturnType<StellarService['getTransaction']>>;
     try {
       txRecord = await this.stellarService.getTransaction(transactionHash);
@@ -140,6 +161,13 @@ export class PaymentsService {
     if (!payment) {
       throw new NotFoundException(
         `No pending payment found for memo "${memoValue}".`,
+      );
+    }
+
+    // ── Ownership check ──────────────────────────────────────────────────────
+    if (payment.userId !== callerId) {
+      throw new ForbiddenException(
+        'You are not authorised to confirm this payment.',
       );
     }
 

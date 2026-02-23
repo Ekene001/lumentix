@@ -45,14 +45,21 @@ export class EventsController {
 
   @Put(':id')
   @Roles(Role.ORGANIZER)
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateEventDto) {
-    return this.eventsService.updateEvent(id, dto);
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateEventDto,
+    @Req() req: AuthenticatedRequest, // ← add
+  ) {
+    return this.eventsService.updateEvent(id, dto, req.user.id); // ← pass callerId
   }
 
   @Delete(':id')
   @Roles(Role.ORGANIZER)
   @HttpCode(HttpStatus.NO_CONTENT)
-  delete(@Param('id', ParseUUIDPipe) id: string) {
-    return this.eventsService.deleteEvent(id);
+  delete(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.eventsService.deleteEvent(id, req.user.id); // ← pass callerId
   }
 }
