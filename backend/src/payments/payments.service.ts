@@ -1,17 +1,18 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
-import { Payment, PaymentStatus } from './entities/payment.entity';
-import { EventsService } from '../events/events.service';
-import { StellarService } from '../stellar/stellar.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { In, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service';
 import { EventStatus } from '../events/entities/event.entity';
+import { EventsService } from '../events/events.service';
+import { StellarService } from '../stellar/stellar.service';
+import { Payment, PaymentStatus } from './entities/payment.entity';
 
 /** Supported on-chain asset codes */
 const SUPPORTED_ASSETS = ['XLM', 'USDC'] as const;
@@ -80,7 +81,22 @@ export class PaymentsService {
       );
     }
 
-    // 4. Persist a pending payment record
+    // 4. Check for existing payment for this user and event
+    const existing = await this.paymentsRepository.findOne({
+      where: {
+        userId,
+        eventId,
+        status: In([PaymentStatus.PENDING, PaymentStatus.CONFIRMED]),
+      },
+    });
+
+    if (existing) {
+      throw new ConflictException(
+        `You already have an active or confirmed payment for this event.`,
+      );
+    }
+
+    // 5. Persist a pending payment record
     const payment = this.paymentsRepository.create({
       eventId,
       userId,
@@ -222,7 +238,6 @@ export class PaymentsService {
     return confirmed;
   }
 
-
   // ─────────────────────────────────────────────────────────────────────────
   // Tickets dependency helper
   // ─────────────────────────────────────────────────────────────────────────
@@ -238,7 +253,6 @@ export class PaymentsService {
 
     return payment;
   }
-
 
   // ─────────────────────────────────────────────────────────────────────────
   // Helpers
@@ -281,7 +295,6 @@ export class PaymentsService {
     );
   }
 }
-
 
 // ─── Internal type helpers ────────────────────────────────────────────────────
 
