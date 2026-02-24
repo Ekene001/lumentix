@@ -1,3 +1,8 @@
+error: duplicate key
+ --> Cargo.toml:3:1
+  |
+3 | name = "lumentix-contract"
+  | ^^^^
    0.583623180s  INFO prepare_target{force=false package_id=lumentix-contract v0.1.0 (/home/vahalla/Desktop/lumentix/contract) target="lumentix_contract"}: cargo::core::compiler::fingerprint: stale: changed "/home/vahalla/Desktop/lumentix/contract/src/storage.rs"
    0.583641717s  INFO prepare_target{force=false package_id=lumentix-contract v0.1.0 (/home/vahalla/Desktop/lumentix/contract) target="lumentix_contract"}: cargo::core::compiler::fingerprint:           (vs) "/home/vahalla/Desktop/lumentix/contract/target/debug/.fingerprint/lumentix-contract-ad816916e200a000/dep-lib-lumentix_contract"
    0.583645349s  INFO prepare_target{force=false package_id=lumentix-contract v0.1.0 (/home/vahalla/Desktop/lumentix/contract) target="lumentix_contract"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 1771933919, nanos: 433064751 } < FileTime { seconds: 1771934312, nanos: 911696477 }
