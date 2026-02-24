@@ -1,4 +1,15 @@
 #![no_std]
+
+mod error;
+mod storage;
+mod types;
+mod validation;
+
+#[cfg(test)]
+mod test;
+
+pub use error::LumentixError;
+pub use types::*;
 use soroban_sdk::{ contract, contractimpl, symbol_short, Address, Env, Symbol, Vec };
 
 use soroban_sdk::{contract, contractimpl, Address, Env, String};
@@ -60,13 +71,65 @@ impl LumentixContract {
             ticket_price,
             max_tickets,
             tickets_sold: 0,
-            status: EventStatus::Active,
+            status: EventStatus::Draft,
         };
 
         storage::set_event(&env, event_id, &event);
         storage::increment_event_id(&env);
 
+        env.events().publish(
+            (soroban_sdk::symbol_short!("created"),),
+            (event_id, organizer),
+        );
+
         Ok(event_id)
+    }
+
+    /// Update event status with validation
+    pub fn update_event_status(
+        env: Env,
+        event_id: u64,
+        new_status: EventStatus,
+        caller: Address,
+    ) -> Result<(), LumentixError> {
+        caller.require_auth();
+
+        if !storage::is_initialized(&env) {
+            return Err(LumentixError::NotInitialized);
+        }
+
+        validation::validate_address(&caller)?;
+
+        let mut event = storage::get_event(&env, event_id)?;
+
+        if event.organizer != caller {
+            return Err(LumentixError::Unauthorized);
+        }
+
+        // Validate state transitions
+        let valid_transition = match (&event.status, &new_status) {
+            (EventStatus::Draft, EventStatus::Published) => true,
+            (EventStatus::Published, EventStatus::Completed) => {
+                // Can only complete after end time
+                env.ledger().timestamp() >= event.end_time
+            }
+            (EventStatus::Published, EventStatus::Cancelled) => true,
+            _ => false,
+        };
+
+        if !valid_transition {
+            return Err(LumentixError::InvalidStatusTransition);
+        }
+
+        event.status = new_status.clone();
+        storage::set_event(&env, event_id, &event);
+
+        env.events().publish(
+            (soroban_sdk::symbol_short!("status"),),
+            (event_id, new_status),
+        );
+
+        Ok(())
     }
 
     /// Purchase a ticket for an event
@@ -127,11 +190,7 @@ impl LumentixContract {
     }
 
     /// Use a ticket (mark as used)
-    pub fn use_ticket(
-        env: Env,
-        ticket_id: u64,
-        validator: Address,
-    ) -> Result<(), LumentixError> {
+    pub fn use_ticket(env: Env, ticket_id: u64, validator: Address) -> Result<(), LumentixError> {
         validator.require_auth();
 
         if !storage::is_initialized(&env) {
@@ -164,11 +223,7 @@ impl LumentixContract {
     }
 
     /// Cancel an event
-    pub fn cancel_event(
-        env: Env,
-        organizer: Address,
-        event_id: u64,
-    ) -> Result<(), LumentixError> {
+    pub fn cancel_event(env: Env, organizer: Address, event_id: u64) -> Result<(), LumentixError> {
         organizer.require_auth();
 
         if !storage::is_initialized(&env) {
@@ -183,6 +238,8 @@ impl LumentixContract {
             return Err(LumentixError::Unauthorized);
         }
 
+        // Can only cancel published events
+        if event.status != EventStatus::Published {
         if event.status != EventStatus::Active {
             return Err(LumentixError::InvalidStatusTransition);
         }
@@ -194,11 +251,7 @@ impl LumentixContract {
     }
 
     /// Request refund for a ticket (only if event is cancelled)
-    pub fn refund_ticket(
-        env: Env,
-        ticket_id: u64,
-        buyer: Address,
-    ) -> Result<(), LumentixError> {
+    pub fn refund_ticket(env: Env, ticket_id: u64, buyer: Address) -> Result<(), LumentixError> {
         buyer.require_auth();
 
         if !storage::is_initialized(&env) {
@@ -291,6 +344,7 @@ impl LumentixContract {
             return Err(LumentixError::Unauthorized);
         }
 
+        // Can only complete published events
         if event.status != EventStatus::Active {
             return Err(LumentixError::InvalidStatusTransition);
         }
